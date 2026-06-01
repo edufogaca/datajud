@@ -93,11 +93,77 @@ if st.button("Buscar Processo"):
                     dados = response.json()
                     st.success("✅ Busca concluída!")
                     
-                    # Exibe o resultado bruto e completo na tela
-                    st.json(dados)
-                else:
-                    st.error(f"Erro na requisição: Status {response.status_code}")
-                    st.write(response.text)
+                    # --- INÍCIO DA FORMATAÇÃO VISUAL ---
                     
-            except Exception as e:
-                st.error(f"Ocorreu um erro ao conectar com a API: {e}")
+                    # 1. Entrando na "gaveta" correta do JSON
+                    hits = dados.get("hits", {}).get("hits", [])
+                    
+                    if len(hits) > 0:
+                        # Pegamos o primeiro resultado (índice 0) e a chave "_source"
+                        processo = hits[0].get("_source", {})
+                        
+                        # 2. Extraindo as informações principais
+                        numero = processo.get("numeroProcesso", "N/A")
+                        classe = processo.get("classe", {}).get("nome", "N/A")
+                        orgao = processo.get("orgaoJulgador", {}).get("nome", "N/A")
+                        sigilo = processo.get("nivelSigilo", 0)
+                        
+                        # A data de ajuizamento vem num formato estranho (Ex: 20260227165132). Vamos formatar para DD/MM/YYYY.
+                        data_raw = processo.get("dataAjuizamento", "")
+                        data_ajuizamento = f"{data_raw[6:8]}/{data_raw[4:6]}/{data_raw[:4]}" if len(data_raw) >= 8 else "N/A"
+                        
+                        # 3. Desenhando o Cabeçalho
+                        st.subheader(f"📄 Processo: {numero}")
+                        
+                        # Criando colunas para organizar a tela
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown(f"**Classe:** {classe}")
+                            st.markdown(f"**Data de Ajuizamento:** {data_ajuizamento}")
+                        with col2:
+                            st.markdown(f"**Órgão Julgador:** {orgao}")
+                            st.markdown(f"**Nível de Sigilo:** {sigilo}")
+                            
+                        # 4. Desenhando as Tags de Assuntos
+                        assuntos = processo.get("assuntos", [])
+                        if assuntos:
+                            st.write("**Assuntos:**")
+                            # Cria uma linha com as tags
+                            tags = " | ".join([assunto.get("nome", "") for assunto in assuntos])
+                            st.info(tags)
+                            
+                        st.divider() # Linha separadora
+                        
+                        # 5. Criando a Linha do Tempo (Movimentações)
+                        movimentos = processo.get("movimentos", [])
+                        if movimentos:
+                            st.subheader("⏱️ Histórico de Movimentações")
+                            
+                            # Opcional: Ordenar as movimentações da mais recente para a mais antiga
+                            mov_ordenados = sorted(movimentos, key=lambda x: x.get("dataHora", ""), reverse=True)
+                            
+                            for mov in mov_ordenados:
+                                nome_mov = mov.get("nome", "Movimentação")
+                                data_hora_raw = mov.get("dataHora", "")
+                                
+                                # A data vem assim: 2026-04-22T03:34:18.000Z. Vamos quebrar e pegar só o DD/MM/YYYY
+                                if data_hora_raw:
+                                    partes_data = data_hora_raw[:10].split("-")
+                                    data_mov = f"{partes_data[2]}/{partes_data[1]}/{partes_data[0]}"
+                                else:
+                                    data_mov = "Data indisponível"
+                                
+                                # Usamos o st.expander para criar "caixinhas" que abrem e fecham
+                                with st.expander(f"{data_mov} - {nome_mov}"):
+                                    st.write(f"**Lançado por:** {mov.get('orgaoJulgador', {}).get('nome', 'N/A')}")
+                                    
+                                    # Se a movimentação tiver detalhes extras (complementos)
+                                    complementos = mov.get("complementosTabelados", [])
+                                    for comp in complementos:
+                                        st.write(f"- *Detalhe:* {comp.get('nome', '')} ({comp.get('descricao', '')})")
+                        else:
+                            st.info("Nenhuma movimentação encontrada para este processo.")
+                    else:
+                        st.warning("A API retornou sucesso, mas não encontrou o detalhamento deste processo.")
+                    
+                    # --- FIM DA FORMATAÇÃO VISUAL ---
